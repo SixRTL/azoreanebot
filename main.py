@@ -2,6 +2,8 @@ import os
 import discord
 from discord.ext import commands
 import pymongo
+import asyncio
+import random
 
 # Initialize bot and set command prefix
 intents = discord.Intents.all()
@@ -147,11 +149,6 @@ async def register_character(ctx, name: str, profession: str, nature: str):
             await ctx.send('Stat allocation timed out. Please start again.')
             return
 
-    # Calculate nature modifiers
-    nature_modifiers = pokemon_nature_stats[nature.capitalize()]["modifier"]
-    for stat, modifier in nature_modifiers.items():
-        stat_distribution[stat] += modifier
-
     # Insert character into MongoDB with level 5 and stat distribution
     character_data = {
         'user_id': user_id,
@@ -253,8 +250,8 @@ async def distribute_stats(ctx):
     }})
     await ctx.send('Stat distribution completed successfully.')
 
-# Command to view the stats of the registered character with nature modifier
-@bot.command(name='stats', help='View the stats of your registered character with nature modifier.')
+# Command to view the stats of the registered character with nature and modifier
+@bot.command(name='stats', help='View the stats of your registered character with nature and modifier.')
 async def view_stats(ctx):
     user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
 
@@ -272,7 +269,7 @@ async def view_stats(ctx):
         if stat in emoji_mapping.keys():
             if stat in nature_modifiers:
                 modified_value = value + nature_modifiers[stat]
-                stat_message += f"{emoji_mapping[stat]} {stat}: {value} (Nature: {nature_modifiers[stat]} -> {modified_value})\n"
+                stat_message += f"{emoji_mapping[stat]} {stat}: {value} (Nature Modifier: {nature_modifiers[stat]} -> {modified_value})\n"
             else:
                 stat_message += f"{emoji_mapping[stat]} {stat}: {value}\n"
 
@@ -290,8 +287,8 @@ async def delete_character(ctx):
     else:
         await ctx.send('You have not registered a character yet.')
 
-# Command to manually level up the registered character
-@bot.command(name='levelup', help='Manually level up your registered character.')
+# Command to manually level up the character and distribute a stat point
+@bot.command(name='levelup', help='Manually level up your character and distribute a stat point.')
 async def level_up(ctx):
     user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
 
@@ -301,38 +298,33 @@ async def level_up(ctx):
         await ctx.send('You have not registered a character yet.')
         return
 
-    current_level = character.get('level', 1)
-    if current_level >= 15:
-        await ctx.send('Your character is already at the maximum level of 15.')
+    # Check if level cap (15) has been reached
+    if character['level'] >= 15:
+        await ctx.send('Your character has reached the maximum level.')
         return
 
-    # Increase level by 1
-    new_level = current_level + 1
-
-    # Give a random stat to distribute
-    import random
-    stat_to_increase = random.choice(['ATK', 'Sp_ATK', 'DEF', 'Sp_DEF', 'SPE'])
-
-    # Update character in MongoDB with new level and reset stat points
+    # Increment level and distribute a stat point
+    new_level = character['level'] + 1
+    stat_choice = random.choice(['ATK', 'Sp_ATK', 'DEF', 'Sp_DEF', 'SPE'])
     collection.update_one({'user_id': user_id}, {'$set': {
         'level': new_level,
-        'stat_points': 1  # Give 1 point to distribute upon level up
+        '$inc': {stat_choice: 1}  # Increase the randomly chosen stat by 1
     }})
 
-    await ctx.send(f'Congratulations! Your character leveled up to level {new_level}. You have 1 stat point to distribute. Use `!distribute_stats` to allocate it.')
+    await ctx.send(f'Congratulations! Your character leveled up to level {new_level} and gained a stat point in {stat_choice}.')
 
-# Command to display all available commands
-@bot.command(name='help', help='Display all available commands.')
-async def help_commands(ctx):
+# Command to open a help menu listing all available commands
+@bot.command(name='help_menu', help='Display a menu listing all available commands.')
+async def help_menu(ctx):
     help_message = """
-    **Available Commands:**
-    `!register <name> <profession> <nature>` - Register your D&D character with a Pokémon nature.
-    `!stats` - View the stats of your registered character with nature modifier.
-    `!distribute_stats` - Distribute additional stat points to your registered character using reactions.
-    `!levelup` - Manually level up your registered character.
-    `!delete` - Delete your registered character.
-    `!help` - Display all available commands.
-    """
+**Available Commands:**
+- !register <name> <profession> <nature>: Register your D&D character.
+- !distribute_stats: Distribute additional stat points to your registered character.
+- !levelup: Manually level up your character and distribute a stat point.
+- !stats: View the stats of your registered character with nature and modifier.
+- !delete: Delete your registered character.
+- !help_menu: Display this help menu.
+"""
     await ctx.send(help_message)
 
 # Bot event for initialization confirmation
