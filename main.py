@@ -3,7 +3,6 @@ import discord
 from discord.ext import commands
 import pymongo
 import asyncio
-import random
 
 # Initialize bot and set command prefix
 intents = discord.Intents.all()
@@ -250,8 +249,8 @@ async def distribute_stats(ctx):
     }})
     await ctx.send('Stat distribution completed successfully.')
 
-# Command to view the stats of the registered character with nature and modifier
-@bot.command(name='stats', help='View the stats of your registered character with nature and modifier.')
+# Command to view the stats of the registered character
+@bot.command(name='stats', help='View the stats of your registered character.')
 async def view_stats(ctx):
     user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
 
@@ -261,17 +260,10 @@ async def view_stats(ctx):
         await ctx.send('You have not registered a character yet.')
         return
 
-    nature_name = pokemon_nature_stats[character['nature']]['name']
-    nature_modifiers = pokemon_nature_stats[character['nature']]['modifier']
-
-    stat_message = f"**Character Stats** (Nature: {character['nature']} - {nature_name}):\n"
+    stat_message = f"**Character Stats**:\n"
     for stat, value in character.items():
         if stat in emoji_mapping.keys():
-            if stat in nature_modifiers:
-                modified_value = value + nature_modifiers[stat]
-                stat_message += f"{emoji_mapping[stat]} {stat}: {value} (Nature Modifier: {nature_modifiers[stat]} -> {modified_value})\n"
-            else:
-                stat_message += f"{emoji_mapping[stat]} {stat}: {value}\n"
+            stat_message += f"{emoji_mapping[stat]} {stat}: {value}\n"
 
     await ctx.send(stat_message)
 
@@ -287,45 +279,19 @@ async def delete_character(ctx):
     else:
         await ctx.send('You have not registered a character yet.')
 
-# Command to manually level up the character and distribute a stat point
-@bot.command(name='levelup', help='Manually level up your character and distribute a stat point.')
-async def level_up(ctx):
-    user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
-
-    # Find the character for the user
-    character = collection.find_one({'user_id': user_id})
-    if not character:
-        await ctx.send('You have not registered a character yet.')
-        return
-
-    # Check if level cap (15) has been reached
-    if character['level'] >= 15:
-        await ctx.send('Your character has reached the maximum level.')
-        return
-
-    # Increment level and distribute a stat point
-    new_level = character['level'] + 1
-    stat_choice = random.choice(['ATK', 'Sp_ATK', 'DEF', 'Sp_DEF', 'SPE'])
-    collection.update_one({'user_id': user_id}, {'$set': {
-        'level': new_level,
-        '$inc': {stat_choice: 1}  # Increase the randomly chosen stat by 1
-    }})
-
-    await ctx.send(f'Congratulations! Your character leveled up to level {new_level} and gained a stat point in {stat_choice}.')
-
-# Command to open a help menu listing all available commands
-@bot.command(name='help_menu', help='Display a menu listing all available commands.')
+# Command to display help menu listing all commands
+@bot.command(name='help_menu', help='Displays the help menu with all available commands.')
 async def help_menu(ctx):
-    help_message = """
-**Available Commands:**
-- !register <name> <profession> <nature>: Register your D&D character.
-- !distribute_stats: Distribute additional stat points to your registered character.
-- !levelup: Manually level up your character and distribute a stat point.
-- !stats: View the stats of your registered character with nature and modifier.
-- !delete: Delete your registered character.
-- !help_menu: Display this help menu.
-"""
-    await ctx.send(help_message)
+    help_embed = discord.Embed(
+        title="Help Menu",
+        description="Here are the available commands:",
+        color=discord.Color.blue()
+    )
+
+    for command in bot.commands:
+        help_embed.add_field(name=f"!{command.name}", value=command.help, inline=False)
+
+    await ctx.send(embed=help_embed)
 
 # Bot event for initialization confirmation
 @bot.event
