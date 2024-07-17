@@ -2,7 +2,6 @@ import os
 import discord
 from discord.ext import commands
 import pymongo
-import asyncio
 
 # Initialize bot and set command prefix
 intents = discord.Intents.all()
@@ -148,6 +147,11 @@ async def register_character(ctx, name: str, profession: str, nature: str):
             await ctx.send('Stat allocation timed out. Please start again.')
             return
 
+    # Calculate nature modifiers
+    nature_modifiers = pokemon_nature_stats[nature.capitalize()]["modifier"]
+    for stat, modifier in nature_modifiers.items():
+        stat_distribution[stat] += modifier
+
     # Insert character into MongoDB with level 5 and stat distribution
     character_data = {
         'user_id': user_id,
@@ -249,8 +253,8 @@ async def distribute_stats(ctx):
     }})
     await ctx.send('Stat distribution completed successfully.')
 
-# Command to view the stats of the registered character
-@bot.command(name='stats', help='View the stats of your registered character.')
+# Command to view the stats of the registered character with nature modifier
+@bot.command(name='stats', help='View the stats of your registered character with nature modifier.')
 async def view_stats(ctx):
     user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
 
@@ -260,10 +264,17 @@ async def view_stats(ctx):
         await ctx.send('You have not registered a character yet.')
         return
 
-    stat_message = f"**Character Stats**:\n"
+    nature_name = pokemon_nature_stats[character['nature']]['name']
+    nature_modifiers = pokemon_nature_stats[character['nature']]['modifier']
+
+    stat_message = f"**Character Stats** (Nature: {character['nature']} - {nature_name}):\n"
     for stat, value in character.items():
         if stat in emoji_mapping.keys():
-            stat_message += f"{emoji_mapping[stat]} {stat}: {value}\n"
+            if stat in nature_modifiers:
+                modified_value = value + nature_modifiers[stat]
+                stat_message += f"{emoji_mapping[stat]} {stat}: {value} (Nature: {nature_modifiers[stat]} -> {modified_value})\n"
+            else:
+                stat_message += f"{emoji_mapping[stat]} {stat}: {value}\n"
 
     await ctx.send(stat_message)
 
@@ -278,6 +289,51 @@ async def delete_character(ctx):
         await ctx.send('Character deleted successfully.')
     else:
         await ctx.send('You have not registered a character yet.')
+
+# Command to manually level up the registered character
+@bot.command(name='levelup', help='Manually level up your registered character.')
+async def level_up(ctx):
+    user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
+
+    # Find the character for the user
+    character = collection.find_one({'user_id': user_id})
+    if not character:
+        await ctx.send('You have not registered a character yet.')
+        return
+
+    current_level = character.get('level', 1)
+    if current_level >= 15:
+        await ctx.send('Your character is already at the maximum level of 15.')
+        return
+
+    # Increase level by 1
+    new_level = current_level + 1
+
+    # Give a random stat to distribute
+    import random
+    stat_to_increase = random.choice(['ATK', 'Sp_ATK', 'DEF', 'Sp_DEF', 'SPE'])
+
+    # Update character in MongoDB with new level and reset stat points
+    collection.update_one({'user_id': user_id}, {'$set': {
+        'level': new_level,
+        'stat_points': 1  # Give 1 point to distribute upon level up
+    }})
+
+    await ctx.send(f'Congratulations! Your character leveled up to level {new_level}. You have 1 stat point to distribute. Use `!distribute_stats` to allocate it.')
+
+# Command to display all available commands
+@bot.command(name='help', help='Display all available commands.')
+async def help_commands(ctx):
+    help_message = """
+    **Available Commands:**
+    `!register <name> <profession> <nature>` - Register your D&D character with a Pokémon nature.
+    `!stats` - View the stats of your registered character with nature modifier.
+    `!distribute_stats` - Distribute additional stat points to your registered character using reactions.
+    `!levelup` - Manually level up your registered character.
+    `!delete` - Delete your registered character.
+    `!help` - Display all available commands.
+    """
+    await ctx.send(help_message)
 
 # Bot event for initialization confirmation
 @bot.event
