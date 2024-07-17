@@ -69,49 +69,218 @@ emoji_mapping = {
     'SPE': '⚡'     # Lightning bolt for Speed
 }
 
-# Command descriptions (can be modified as needed)
-command_descriptions = {
-    'register': 'Register your D&D character with a Pokémon nature and distribute 5 stat points.',
-    'distribute_stats': 'Distribute additional stat points to your registered character using reactions.',
-    'stats': 'View the stats of your registered character.',
-    'delete': 'Delete your registered character.',
-    'help_menu': 'Show this help menu.'
-}
-
 # Command to register a character with reaction-based stat distribution
-@bot.command(name='register', help=command_descriptions['register'])
+@bot.command(name='register', help='Register your D&D character with a Pokémon nature and distribute 5 stat points.')
 async def register_character(ctx, name: str, profession: str, nature: str):
-    # Implementation remains unchanged as per the previous example
-    pass
+    user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
+
+    # Check if the character already exists for the user
+    existing_character = collection.find_one({'user_id': user_id})
+    if existing_character:
+        await ctx.send('You have already registered a character.')
+        return
+
+    # Check if the provided nature is valid
+    if nature.capitalize() not in pokemon_nature_stats:
+        await ctx.send(f'Invalid nature. Please choose one of the following: {", ".join(pokemon_nature_stats.keys())}.')
+        return
+
+    # Initial stat distribution menu
+    stat_distribution = {
+        'ATK': 0,
+        'Sp_ATK': 0,
+        'DEF': 0,
+        'Sp_DEF': 0,
+        'SPE': 0
+    }
+
+    stat_points_left = 5
+
+    def check(reaction, user):
+        return user == ctx.author and str(reaction.emoji) in emoji_mapping.values()
+
+    message = await ctx.send(f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
+
+    for emoji in emoji_mapping.values():
+        await message.add_reaction(emoji)
+
+    while stat_points_left > 0:
+        try:
+            reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
+            emoji_str = str(reaction.emoji)
+
+            for stat, emoji in emoji_mapping.items():
+                if emoji == emoji_str:
+                    stat_choice = stat
+
+            # Prompt user for points to allocate
+            await ctx.send(f'How many points do you want to allocate to {stat_choice}? (Remaining points: {stat_points_left})')
+
+            def points_check(m):
+                return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit()
+
+            try:
+                points_msg = await bot.wait_for('message', timeout=60.0, check=points_check)
+                points = int(points_msg.content)
+
+                if points > stat_points_left or points < 0:
+                    await ctx.send(f'Invalid number of points. You can allocate between 0 and {stat_points_left} points.')
+                    continue
+
+                # Update stat distribution
+                stat_distribution[stat_choice] += points
+                stat_points_left -= points
+
+                # Update reactions to show remaining points
+                for emoji in emoji_mapping.values():
+                    await message.clear_reaction(emoji)
+
+                for stat, emoji in emoji_mapping.items():
+                    await message.add_reaction(emoji)
+
+                await message.edit(content=f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
+
+            except asyncio.TimeoutError:
+                await ctx.send('Stat allocation timed out. Please start again.')
+                return
+
+        except asyncio.TimeoutError:
+            await ctx.send('Stat allocation timed out. Please start again.')
+            return
+
+    # Insert character into MongoDB with level 5 and stat distribution
+    character_data = {
+        'user_id': user_id,
+        'name': name,
+        'profession': profession,
+        'level': 5,
+        'nature': nature.capitalize(),
+        'stat_points': 0,
+        'ATK': stat_distribution['ATK'],
+        'Sp_ATK': stat_distribution['Sp_ATK'],
+        'DEF': stat_distribution['DEF'],
+        'Sp_DEF': stat_distribution['Sp_DEF'],
+        'SPE': stat_distribution['SPE']
+    }
+
+    collection.insert_one(character_data)
+    await ctx.send(f'Character {name} registered successfully with profession {profession} and nature {nature.capitalize()}, associated with {pokemon_nature_stats[nature.capitalize()]["name"]}.')
 
 # Command to distribute additional stat points using reactions
-@bot.command(name='distribute_stats', help=command_descriptions['distribute_stats'])
+@bot.command(name='distribute_stats', help='Distribute additional stat points to your registered character using reactions.')
 async def distribute_stats(ctx):
-    # Implementation remains unchanged as per the previous example
-    pass
+    user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
+
+    # Find the character for the user
+    character = collection.find_one({'user_id': user_id})
+    if not character:
+        await ctx.send('You have not registered a character yet.')
+        return
+
+    stat_distribution = {
+        'ATK': character['ATK'],
+        'Sp_ATK': character['Sp_ATK'],
+        'DEF': character['DEF'],
+        'Sp_DEF': character['Sp_DEF'],
+        'SPE': character['SPE']
+    }
+
+    stat_points_left = character['stat_points']
+
+    def check(reaction, user):
+        return user == ctx.author and str(reaction.emoji) in emoji_mapping.values()
+
+    message = await ctx.send(f"React with emojis to distribute your {stat_points_left} stat points.")
+
+    for emoji in emoji_mapping.values():
+        await message.add_reaction(emoji)
+
+    while stat_points_left > 0:
+        try:
+            reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
+            emoji_str = str(reaction.emoji)
+
+            for stat, emoji in emoji_mapping.items():
+                if emoji == emoji_str:
+                    stat_choice = stat
+
+            # Prompt user for points to allocate
+            await ctx.send(f'How many points do you want to allocate to {stat_choice}? (Remaining points: {stat_points_left})')
+
+            def points_check(m):
+                return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit()
+
+            try:
+                points_msg = await bot.wait_for('message', timeout=60.0, check=points_check)
+                points = int(points_msg.content)
+
+                if points > stat_points_left or points < 0:
+                    await ctx.send(f'Invalid number of points. You can allocate between 0 and {stat_points_left} points.')
+                    continue
+
+                # Update stat distribution
+                stat_distribution[stat_choice] += points
+                stat_points_left -= points
+
+                # Update reactions to show remaining points
+                for emoji in emoji_mapping.values():
+                    await message.clear_reaction(emoji)
+
+                for stat, emoji in emoji_mapping.items():
+                    await message.add_reaction(emoji)
+
+                await message.edit(content=f"React with emojis to distribute your {stat_points_left} stat points.")
+
+            except asyncio.TimeoutError:
+                await ctx.send('Stat allocation timed out. Please start again.')
+                return
+
+        except asyncio.TimeoutError:
+            await ctx.send('Stat allocation timed out. Please start again.')
+            return
+
+    # Update character in MongoDB with new stat distribution
+    collection.update_one({'user_id': user_id}, {'$set': {
+        'ATK': stat_distribution['ATK'],
+        'Sp_ATK': stat_distribution['Sp_ATK'],
+        'DEF': stat_distribution['DEF'],
+        'Sp_DEF': stat_distribution['Sp_DEF'],
+        'SPE': stat_distribution['SPE']
+    }})
+    await ctx.send('Stat distribution completed successfully.')
 
 # Command to view the stats of the registered character
-@bot.command(name='stats', help=command_descriptions['stats'])
+@bot.command(name='stats', help='View the stats of your registered character.')
 async def view_stats(ctx):
-    # Implementation remains unchanged as per the previous example
-    pass
+    user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
+
+    # Find the character for the user
+    character = collection.find_one({'user_id': user_id})
+    if not character:
+        await ctx.send('You have not registered a character yet.')
+        return
+
+    nature_name = character['nature']  # Fetch the exact Pokémon nature from character data
+
+    stat_message = f"**Character Stats** (Nature: {nature_name}):\n"
+    for stat, value in character.items():
+        if stat in emoji_mapping.keys():
+            stat_name = stat.replace('_', '.').capitalize()  # Format stat name
+            stat_message += f"{emoji_mapping[stat]} {stat_name}: {value}\n"
+
+    await ctx.send(stat_message)
 
 # Command to delete the registered character
-@bot.command(name='delete', help=command_descriptions['delete'])
+@bot.command(name='delete', help='Delete your registered character.')
 async def delete_character(ctx):
-    # Implementation remains unchanged as per the previous example
-    pass
+    user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
 
-# Command to show help menu
-@bot.command(name='help_menu', help=command_descriptions['help_menu'])
-async def help_menu(ctx):
-    # Prepare the help menu content
-    help_embed = discord.Embed(title='Command Help Menu', description='List of available commands:')
-    
-    for command in bot.commands:
-        help_embed.add_field(name=command.name, value=command_descriptions.get(command.name, 'No description provided'), inline=False)
-    
-    await ctx.send(embed=help_embed)
+    # Find and delete the character for the user
+    result = collection.delete_one({'user_id': user_id})
+    if result.deleted_count == 1:
+        await ctx.send('Character deleted successfully.')
+    else:
+        await ctx.send('You have not registered a character yet.')
 
 # Bot event for initialization confirmation
 @bot.event
