@@ -260,7 +260,7 @@ async def view_stats(ctx):
         await ctx.send('You have not registered a character yet.')
         return
 
-    nature_name = character['nature']  # Fetch the exact Pokémon nature from character data
+    nature_name = pokemon_nature_stats[character['nature']]['name']
 
     stat_message = f"**Character Stats** (Nature: {nature_name}):\n"
     for stat, value in character.items():
