@@ -99,13 +99,13 @@ async def register_character(ctx, name: str, profession: str, nature: str):
     def check(reaction, user):
         return user == ctx.author and str(reaction.emoji) in emoji_mapping.values()
 
-    message = await ctx.send(f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
+    try:
+        message = await ctx.send(f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
 
-    for emoji in emoji_mapping.values():
-        await message.add_reaction(emoji)
+        for emoji in emoji_mapping.values():
+            await message.add_reaction(emoji)
 
-    while stat_points_left > 0:
-        try:
+        while stat_points_left > 0:
             reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
             emoji_str = str(reaction.emoji)
 
@@ -119,34 +119,29 @@ async def register_character(ctx, name: str, profession: str, nature: str):
             def points_check(m):
                 return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit()
 
-            try:
-                points_msg = await bot.wait_for('message', timeout=60.0, check=points_check)
-                points = int(points_msg.content)
+            points_msg = await bot.wait_for('message', timeout=60.0, check=points_check)
+            points = int(points_msg.content)
 
-                if points > stat_points_left or points < 0:
-                    await ctx.send(f'Invalid number of points. You can allocate between 0 and {stat_points_left} points.')
-                    continue
+            if points > stat_points_left or points < 0:
+                await ctx.send(f'Invalid number of points. You can allocate between 0 and {stat_points_left} points.')
+                continue
 
-                # Update stat distribution
-                stat_distribution[stat_choice] += points
-                stat_points_left -= points
+            # Update stat distribution
+            stat_distribution[stat_choice] += points
+            stat_points_left -= points
 
-                # Update reactions to show remaining points
-                for emoji in emoji_mapping.values():
-                    await message.clear_reaction(emoji)
+            # Update reactions to show remaining points
+            for emoji in emoji_mapping.values():
+                await message.clear_reaction(emoji)
 
-                for stat, emoji in emoji_mapping.items():
-                    await message.add_reaction(emoji)
+            for stat, emoji in emoji_mapping.items():
+                await message.add_reaction(emoji)
 
-                await message.edit(content=f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
+            await message.edit(content=f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
 
-            except asyncio.TimeoutError:
-                await ctx.send('Stat allocation timed out. Please start again.')
-                return
-
-        except asyncio.TimeoutError:
-            await ctx.send('Stat allocation timed out. Please start again.')
-            return
+    except asyncio.TimeoutError:
+        await ctx.send('Stat allocation timed out. Please start again.')
+        return
 
     # Insert character into MongoDB with level 5 and stat distribution
     character_data = {
@@ -163,8 +158,11 @@ async def register_character(ctx, name: str, profession: str, nature: str):
         'SPE': stat_distribution['SPE']
     }
 
-    collection.insert_one(character_data)
-    await ctx.send(f'Character {name} registered successfully with profession {profession} and nature {nature.capitalize()}, associated with {pokemon_nature_stats[nature.capitalize()]["name"]}.')
+    try:
+        collection.insert_one(character_data)
+        await ctx.send(f'Character {name} registered successfully with profession {profession} and nature {nature.capitalize()}.')
+    except pymongo.errors.PyMongoError as e:
+        await ctx.send(f'Failed to register character. Error: {str(e)}')
 
 # Command to view all available commands and their descriptions
 @bot.command(name='help_menu', help='Display a menu of all available commands and their descriptions.')
