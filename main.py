@@ -70,7 +70,7 @@ emoji_mapping = {
 }
 
 # Command to register a character with reaction-based stat distribution
-@bot.command(name='register', help='Register your D&D character with a Pokémon nature and distribute 5 stat points.')
+@bot.command(name='register', help='Register your character with a Pokémon nature and distribute 5 stat points.')
 async def register_character(ctx, name: str, profession: str, nature: str):
     user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
 
@@ -165,8 +165,6 @@ async def register_character(ctx, name: str, profession: str, nature: str):
 
     collection.insert_one(character_data)
     await ctx.send(f'Character {name} registered successfully with profession {profession} and nature {nature.capitalize()}, associated with {pokemon_nature_stats[nature.capitalize()]["name"]}.')
-
-# Other commands remain the same, but make sure to replace tokens/URIs similarly.
 
 # Command to view all available commands and their descriptions
 @bot.command(name='help_menu', help='Display a menu of all available commands and their descriptions.')
