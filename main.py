@@ -85,8 +85,86 @@ async def register_character(ctx, name: str, profession: str, nature: str):
         await ctx.send(f'Invalid nature. Please choose one of the following: {", ".join(pokemon_nature_stats.keys())}.')
         return
 
-    # Remaining code for registering character...
-    # (This part remains unchanged as it handles Discord interactions)
+    # Initial stat distribution menu
+    stat_distribution = {
+        'ATK': 0,
+        'Sp_ATK': 0,
+        'DEF': 0,
+        'Sp_DEF': 0,
+        'SPE': 0
+    }
+
+    stat_points_left = 5
+
+    def check(reaction, user):
+        return user == ctx.author and str(reaction.emoji) in emoji_mapping.values()
+
+    message = await ctx.send(f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
+
+    for emoji in emoji_mapping.values():
+        await message.add_reaction(emoji)
+
+    while stat_points_left > 0:
+        try:
+            reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
+            emoji_str = str(reaction.emoji)
+
+            for stat, emoji in emoji_mapping.items():
+                if emoji == emoji_str:
+                    stat_choice = stat
+
+            # Prompt user for points to allocate
+            await ctx.send(f'How many points do you want to allocate to {stat_choice}? (Remaining points: {stat_points_left})')
+
+            def points_check(m):
+                return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit()
+
+            try:
+                points_msg = await bot.wait_for('message', timeout=60.0, check=points_check)
+                points = int(points_msg.content)
+
+                if points > stat_points_left or points < 0:
+                    await ctx.send(f'Invalid number of points. You can allocate between 0 and {stat_points_left} points.')
+                    continue
+
+                # Update stat distribution
+                stat_distribution[stat_choice] += points
+                stat_points_left -= points
+
+                # Update reactions to show remaining points
+                for emoji in emoji_mapping.values():
+                    await message.clear_reaction(emoji)
+
+                for stat, emoji in emoji_mapping.items():
+                    await message.add_reaction(emoji)
+
+                await message.edit(content=f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
+
+            except asyncio.TimeoutError:
+                await ctx.send('Stat allocation timed out. Please start again.')
+                return
+
+        except asyncio.TimeoutError:
+            await ctx.send('Stat allocation timed out. Please start again.')
+            return
+
+    # Insert character into MongoDB with level 5 and stat distribution
+    character_data = {
+        'user_id': user_id,
+        'name': name,
+        'profession': profession,
+        'level': 5,
+        'nature': nature.capitalize(),
+        'stat_points': 0,
+        'ATK': stat_distribution['ATK'],
+        'Sp_ATK': stat_distribution['Sp_ATK'],
+        'DEF': stat_distribution['DEF'],
+        'Sp_DEF': stat_distribution['Sp_DEF'],
+        'SPE': stat_distribution['SPE']
+    }
+
+    collection.insert_one(character_data)
+    await ctx.send(f'Character {name} registered successfully with profession {profession} and nature {nature.capitalize()}, associated with {pokemon_nature_stats[nature.capitalize()]["name"]}.')
 
 # Other commands remain the same, but make sure to replace tokens/URIs similarly.
 
