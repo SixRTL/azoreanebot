@@ -177,9 +177,80 @@ async def distribute_stats(ctx):
         await ctx.send('You have not registered a character yet.')
         return
 
-    # Additional stat distribution logic (similar to register_character)
+    # Additional stat distribution logic
+    stat_distribution = {
+        'ATK': 0,
+        'Sp_ATK': 0,
+        'DEF': 0,
+        'Sp_DEF': 0,
+        'SPE': 0
+    }
 
-    await ctx.send('Implement additional stat distribution logic here.')
+    stat_points_left = 5 - character.get('stat_points', 0)
+
+    def check(reaction, user):
+        return user == ctx.author and str(reaction.emoji) in emoji_mapping.values()
+
+    try:
+        message = await ctx.send(f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
+
+        for emoji in emoji_mapping.values():
+            await message.add_reaction(emoji)
+
+        while stat_points_left > 0:
+            reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
+            emoji_str = str(reaction.emoji)
+
+            for stat, emoji in emoji_mapping.items():
+                if emoji == emoji_str:
+                    stat_choice = stat
+
+            # Prompt user for points to allocate
+            await ctx.send(f'How many points do you want to allocate to {stat_choice}? (Remaining points: {stat_points_left})')
+
+            def points_check(m):
+                return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit()
+
+            points_msg = await bot.wait_for('message', timeout=60.0, check=points_check)
+            points = int(points_msg.content)
+
+            if points > stat_points_left or points < 0:
+                await ctx.send(f'Invalid number of points. You can allocate between 0 and {stat_points_left} points.')
+                continue
+
+            # Update stat distribution
+            stat_distribution[stat_choice] += points
+            stat_points_left -= points
+
+            # Update reactions to show remaining points
+            for emoji in emoji_mapping.values():
+                await message.clear_reaction(emoji)
+
+            for stat, emoji in emoji_mapping.items():
+                await message.add_reaction(emoji)
+
+            await message.edit(content=f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
+
+    except asyncio.TimeoutError:
+        await ctx.send('Stat allocation timed out. Please start again.')
+        return
+
+    # Update MongoDB with new stat distribution
+    try:
+        collection.update_one(
+            {'user_id': user_id},
+            {'$inc': {
+                'ATK': stat_distribution['ATK'],
+                'Sp_ATK': stat_distribution['Sp_ATK'],
+                'DEF': stat_distribution['DEF'],
+                'Sp_DEF': stat_distribution['Sp_DEF'],
+                'SPE': stat_distribution['SPE'],
+                'stat_points': sum(stat_distribution.values())
+            }}
+        )
+        await ctx.send('Stat points distributed successfully.')
+    except pymongo.errors.PyMongoError as e:
+        await ctx.send(f'Failed to distribute stat points. Error: {str(e)}')
 
 # Command to view all available commands and their descriptions
 @bot.command(name='help_menu', help='Display a menu of all available commands and their descriptions.')
