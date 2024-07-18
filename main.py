@@ -143,23 +143,25 @@ async def register_character(ctx, name: str, profession: str, nature: str):
         await ctx.send('Stat allocation timed out. Please start again.')
         return
 
-    # Insert character into MongoDB with level 5 and stat distribution
-    character_data = {
-        'user_id': user_id,
-        'name': name,
-        'profession': profession,
-        'level': 5,
-        'nature': nature.capitalize(),
-        'stat_points': 0,
-        'ATK': stat_distribution['ATK'],
-        'Sp_ATK': stat_distribution['Sp_ATK'],
-        'DEF': stat_distribution['DEF'],
-        'Sp_DEF': stat_distribution['Sp_DEF'],
-        'SPE': stat_distribution['SPE']
-    }
+    # MongoDB collection schema adjustment example
+character_data = {
+    'user_id': user_id,
+    'name': name,
+    'profession': profession,
+    'level': 5,
+    'nature': nature.capitalize(),
+    'stat_points': 0,
+    'ATK': stat_distribution['ATK'],
+    'Sp_ATK': stat_distribution['Sp_ATK'],
+    'DEF': stat_distribution['DEF'],
+    'Sp_DEF': stat_distribution['Sp_DEF'],
+    'SPE': stat_distribution['SPE'],
+    'HP': 25,   # Example default value for HP
+    'EP': 15     # Example default value for EP
+}
 
-    try:
-        collection.insert_one(character_data)
+# Inserting into MongoDB
+collection.insert_one(character_data)
         await ctx.send(f'Character {name} registered successfully with profession {profession} and nature {nature.capitalize()}.')
     except pymongo.errors.PyMongoError as e:
         await ctx.send(f'Failed to register character. Error: {str(e)}')
@@ -185,6 +187,9 @@ async def help_menu(ctx):
                          inline=False)
     help_embed.add_field(name='!view_character',
                          value='View details of your registered character.',
+                         inline=False)
+    help_embed.add_field(name='!boost',
+                         value='Boost either HP or EP by 5 points using reactions.',
                          inline=False)
     help_embed.add_field(name='!help_menu',
                          value='Display a menu of all available commands and their descriptions.',
@@ -220,10 +225,12 @@ async def view_character(ctx):
     embed = discord.Embed(
         title=f'{character["name"]} - {character["profession"]}',
         description=f'**Nature:** {nature_name}\n\n**Modifiers:** {modifiers_text}\n\n**Stats:**',
-        color=discord.Color.green()
+        color=discord.Color.blue()
     )
 
     # Add all stats to the embed
+    embed.add_field(name='HP', value=character['HP'], inline=True)
+    embed.add_field(name='EP', value=character['EP'], inline=True)
     embed.add_field(name='ATK', value=character['ATK'], inline=True)
     embed.add_field(name='Sp_ATK', value=character['Sp_ATK'], inline=True)
     embed.add_field(name='DEF', value=character['DEF'], inline=True)
@@ -231,6 +238,60 @@ async def view_character(ctx):
     embed.add_field(name='SPE', value=character['SPE'], inline=True)
 
     await ctx.send(embed=embed)
+
+@bot.command(name='boost', help='Boost either HP or EP by 5 points.')
+async def boost(ctx):
+    user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
+
+    # Find the character for the user
+    character = collection.find_one({'user_id': user_id})
+    if not character:
+        await ctx.send('You have not registered a character yet.')
+        return
+
+    # Define the emojis for boosting HP and EP
+    emojis = {
+        'HP': '❤️',
+        'EP': '🔋'  # Battery emoji for Energy Points
+    }
+
+    # Function to check reaction
+    def check(reaction, user):
+        return user == ctx.author and str(reaction.emoji) in emojis.values()
+
+    try:
+        # Send message with reaction options
+        message = await ctx.send("React with ❤️ to boost HP or 🔋 to boost EP.")
+
+        # Add reactions to the message
+        for emoji in emojis.values():
+            await message.add_reaction(emoji)
+
+        # Wait for user reaction
+        reaction, _ = await bot.wait_for('reaction_add', timeout=60.0, check=check)
+
+        # Determine which stat to boost based on reaction
+        if str(reaction.emoji) == emojis['HP']:
+            stat_to_boost = 'HP'
+        elif str(reaction.emoji) == emojis['EP']:
+            stat_to_boost = 'EP'
+        else:
+            await ctx.send("Invalid reaction. Please react with ❤️ or 🔋.")
+            return
+
+        # Update the character's stat in MongoDB
+        collection.update_one(
+            {'user_id': user_id},
+            {'$inc': {stat_to_boost: 5}}
+        )
+
+        await ctx.send(f"{stat_to_boost} boosted by 5 points!")
+
+    except asyncio.TimeoutError:
+        await ctx.send('You did not react in time. Please try again.')
+
+    except Exception as e:
+        await ctx.send(f'Error: {str(e)}')
 
 # Command to manually level up the character and gain a stat point
 @bot.command(name='level_up', help='Manually level up your character and gain a stat point to distribute.')
