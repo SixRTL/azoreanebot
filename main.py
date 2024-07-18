@@ -167,7 +167,7 @@ async def register_character(ctx, name: str, profession: str, nature: str):
         await ctx.send(f'Failed to register character. Error: {str(e)}')
 
 # Command to distribute additional stat points to registered character
-@bot.command(name='distribute_stats', help='Distribute additional stat points to your registered character using reactions.')
+@bot.command(name='distribute_stats', help='Distribute stat points to your registered character using reactions.')
 async def distribute_stats(ctx):
     user_id = str(ctx.author.id)  # Convert user_id to string for MongoDB storage
 
@@ -177,7 +177,15 @@ async def distribute_stats(ctx):
         await ctx.send('You have not registered a character yet.')
         return
 
-    # Additional stat distribution logic
+    # Fetch current stat points from the database
+    stat_points_left = character.get('stat_points', 0)
+
+    # Validate if there are stat points left to distribute
+    if stat_points_left <= 0:
+        await ctx.send('You do not have any stat points to distribute.')
+        return
+
+    # Initialize stat distribution and emoji handling
     stat_distribution = {
         'ATK': 0,
         'Sp_ATK': 0,
@@ -186,54 +194,81 @@ async def distribute_stats(ctx):
         'SPE': 0
     }
 
-    stat_points_left = 5 - character.get('stat_points', 0)
-
     def check(reaction, user):
         return user == ctx.author and str(reaction.emoji) in emoji_mapping.values()
 
     try:
         message = await ctx.send(f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
 
+        # Add reaction emojis for stat choices
         for emoji in emoji_mapping.values():
             await message.add_reaction(emoji)
 
+        # Loop to allocate stat points based on reactions
         while stat_points_left > 0:
             reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
             emoji_str = str(reaction.emoji)
 
+            # Determine which stat corresponds to the emoji
+            stat_choice = None
             for stat, emoji in emoji_mapping.items():
                 if emoji == emoji_str:
                     stat_choice = stat
+                    break
 
-            # Prompt user for points to allocate
+            if not stat_choice:
+                continue  # Invalid emoji, ignore and wait for valid reaction
+
+            # Prompt user to allocate points to the selected stat
             await ctx.send(f'How many points do you want to allocate to {stat_choice}? (Remaining points: {stat_points_left})')
 
             def points_check(m):
                 return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit()
 
+            # Wait for user input on points allocation
             points_msg = await bot.wait_for('message', timeout=60.0, check=points_check)
             points = int(points_msg.content)
 
-            if points > stat_points_left or points < 0:
-                await ctx.send(f'Invalid number of points. You can allocate between 0 and {stat_points_left} points.')
+            # Validate points allocation
+            if points <= 0 or points > stat_points_left:
+                await ctx.send(f'Invalid number of points. You can allocate between 1 and {stat_points_left} points.')
                 continue
 
-            # Update stat distribution
+            # Update stat distribution and remaining points
             stat_distribution[stat_choice] += points
             stat_points_left -= points
 
-            # Update reactions to show remaining points
-            for emoji in emoji_mapping.values():
-                await message.clear_reaction(emoji)
-
-            for stat, emoji in emoji_mapping.items():
-                await message.add_reaction(emoji)
-
+            # Update message to reflect remaining points
             await message.edit(content=f"React with emojis to distribute your stat points. You have {stat_points_left} points left.")
+
+            # Clear reactions and re-add for updated display
+            await message.clear_reactions()
+            for emoji in emoji_mapping.values():
+                await message.add_reaction(emoji)
 
     except asyncio.TimeoutError:
         await ctx.send('Stat allocation timed out. Please start again.')
         return
+    except Exception as e:
+        await ctx.send(f'An error occurred: {e}')
+        return
+
+    # Update MongoDB with new stat distribution and total stat points
+    try:
+        collection.update_one(
+            {'user_id': user_id},
+            {'$inc': {
+                'ATK': stat_distribution['ATK'],
+                'Sp_ATK': stat_distribution['Sp_ATK'],
+                'DEF': stat_distribution['DEF'],
+                'Sp_DEF': stat_distribution['Sp_DEF'],
+                'SPE': stat_distribution['SPE'],
+                'stat_points': -sum(stat_distribution.values())  # Decrease stat_points by allocated amount
+            }}
+        )
+        await ctx.send('Stat points distributed successfully.')
+    except pymongo.errors.PyMongoError as e:
+        await ctx.send(f'Failed to distribute stat points. Error: {str(e)}')
 
     # Update MongoDB with new stat distribution
     try:
