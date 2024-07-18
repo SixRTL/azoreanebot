@@ -156,8 +156,8 @@ async def register_character(ctx, name: str, profession: str, nature: str):
         'DEF': stat_distribution['DEF'],
         'Sp_DEF': stat_distribution['Sp_DEF'],
         'SPE': stat_distribution['SPE'],
-        'HP': 100,   # Example default value for HP
-        'EP': 50     # Example default value for EP
+        'HP': 25,   # Example default value for HP
+        'EP': 15     # Example default value for EP
     }
 
     try:
@@ -239,18 +239,19 @@ async def view_character(ctx):
 
     embed = discord.Embed(
         title=f'{character["name"]} - {character["profession"]}',
-        description=f'**Nature:** {nature_name}\n\n**Modifiers:** {modifiers_text}\n\n**Stats:**',
+        description=f'**Nature:** {nature_name}\n\n**Modifiers:** {modifiers_text}',
         color=discord.Color.green()
     )
 
-    # Add all stats to the embed
+    # Add HP and EP in one line
+    embed.add_field(name='HP | EP', value=f'{character.get("HP", "N/A")} | {character.get("EP", "N/A")}', inline=False)
+
+    # Add all other stats to the embed
     embed.add_field(name='ATK', value=character['ATK'], inline=True)
     embed.add_field(name='Sp_ATK', value=character['Sp_ATK'], inline=True)
     embed.add_field(name='DEF', value=character['DEF'], inline=True)
     embed.add_field(name='Sp_DEF', value=character['Sp_DEF'], inline=True)
     embed.add_field(name='SPE', value=character['SPE'], inline=True)
-    embed.add_field(name='HP', value=character.get('HP', 'N/A'), inline=True)  # Add HP field
-    embed.add_field(name='EP', value=character.get('EP', 'N/A'), inline=True)  # Add EP field
 
     await ctx.send(embed=embed)
 
