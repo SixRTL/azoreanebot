@@ -376,19 +376,24 @@ async def boost(ctx):
             # Boost HP by 5 points
             collection.update_one(
                 {'user_id': user_id},
-                {'$inc': {'HP': 5}}
+                {'$inc': {'HP': 5, 'EP': -5}}  # Decrease EP by 5 if previously boosted
             )
             await ctx.send('HP boosted by 5 points.')
         elif emoji_str == '🔋':
             # Boost EP by 5 points
             collection.update_one(
                 {'user_id': user_id},
-                {'$inc': {'EP': 5}}
+                {'$inc': {'EP': 5, 'HP': -5}}  # Decrease HP by 5 if previously boosted
             )
             await ctx.send('EP boosted by 5 points.')
 
+        # Clear all reactions after processing
+        await message.clear_reactions()
+
     except asyncio.TimeoutError:
         await ctx.send('Boosting timed out. Please try again.')
+    except Exception as e:
+        await ctx.send(f'An error occurred: {e}')
 
 # Run the bot with the token from Heroku environment variables
 bot.run(TOKEN)
