@@ -206,7 +206,7 @@ async def distribute_stats(ctx):
 
         # Loop to allocate stat points based on reactions
         while stat_points_left > 0:
-            reaction, user = await bot.wait_for('reaction_add', timeout=60.0, check=check)
+            reaction, user = await bot.wait_for('reaction_add', timeout=120.0, check=check)
             emoji_str = str(reaction.emoji)
 
             # Determine which stat corresponds to the emoji
@@ -226,7 +226,7 @@ async def distribute_stats(ctx):
                 return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit()
 
             # Wait for user input on points allocation
-            points_msg = await bot.wait_for('message', timeout=60.0, check=points_check)
+            points_msg = await bot.wait_for('message', timeout=120.0, check=points_check)
             points = int(points_msg.content)
 
             # Validate points allocation
@@ -253,7 +253,7 @@ async def distribute_stats(ctx):
         await ctx.send(f'An error occurred: {e}')
         return
 
-    # Update MongoDB with new stat distribution and total stat points
+    # Update MongoDB with new stat distribution and subtract allocated stat points
     try:
         collection.update_one(
             {'user_id': user_id},
@@ -264,23 +264,6 @@ async def distribute_stats(ctx):
                 'Sp_DEF': stat_distribution['Sp_DEF'],
                 'SPE': stat_distribution['SPE'],
                 'stat_points': -sum(stat_distribution.values())  # Decrease stat_points by allocated amount
-            }}
-        )
-        await ctx.send('Stat points distributed successfully.')
-    except pymongo.errors.PyMongoError as e:
-        await ctx.send(f'Failed to distribute stat points. Error: {str(e)}')
-
-    # Update MongoDB with new stat distribution
-    try:
-        collection.update_one(
-            {'user_id': user_id},
-            {'$inc': {
-                'ATK': stat_distribution['ATK'],
-                'Sp_ATK': stat_distribution['Sp_ATK'],
-                'DEF': stat_distribution['DEF'],
-                'Sp_DEF': stat_distribution['Sp_DEF'],
-                'SPE': stat_distribution['SPE'],
-                'stat_points': sum(stat_distribution.values())
             }}
         )
         await ctx.send('Stat points distributed successfully.')
