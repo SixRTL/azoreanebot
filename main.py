@@ -394,14 +394,14 @@ async def boost(ctx):
             # Boost HP by 5 points
             collection.update_one(
                 {'user_id': user_id},
-                {'$inc': {'HP': 5, 'EP': -5}}  # Decrease EP by 5 if previously boosted
+                {'$inc': {'HP': 5}}
             )
             await ctx.send('HP boosted by 5 points.')
         elif emoji_str == '🔋':
             # Boost EP by 5 points
             collection.update_one(
                 {'user_id': user_id},
-                {'$inc': {'EP': 5, 'HP': -5}}  # Decrease HP by 5 if previously boosted
+                {'$inc': {'EP': 5}}
             )
             await ctx.send('EP boosted by 5 points.')
 
